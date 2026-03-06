@@ -392,7 +392,7 @@ describe("OpenAIProvider", () => {
       );
     });
 
-    it("calls onError on SSE error event (429 rate limit)", async () => {
+    it("calls onError with raw message on SSE error event (429 rate limit)", async () => {
       mockGetItemAsync.mockResolvedValue("sk-test-key");
       const mockES = createMockEventSource();
 
@@ -421,12 +421,12 @@ describe("OpenAIProvider", () => {
 
       expect(callbacks.onError).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: expect.stringContaining("Rate limited"),
+          message: "OpenAI: Rate limit exceeded",
         }),
       );
     });
 
-    it("calls onError with quota message on SSE 429 insufficient_quota", async () => {
+    it("calls onError with raw quota message on SSE 429 insufficient_quota", async () => {
       mockGetItemAsync.mockResolvedValue("sk-test-key");
       const mockES = createMockEventSource();
 
@@ -459,7 +459,7 @@ describe("OpenAIProvider", () => {
 
       expect(callbacks.onError).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: expect.stringContaining("Quota exceeded"),
+          message: "OpenAI: You exceeded your current quota",
         }),
       );
     });

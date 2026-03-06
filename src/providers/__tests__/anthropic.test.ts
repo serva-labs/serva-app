@@ -437,7 +437,7 @@ describe("AnthropicProvider", () => {
       );
     });
 
-    it("calls onError on SSE error event with Anthropic error data", async () => {
+    it("calls onError on SSE error event with raw Anthropic message", async () => {
       mockGetItemAsync.mockResolvedValue("sk-ant-test-key");
       const mockES = createMockEventSource();
 
@@ -468,12 +468,12 @@ describe("AnthropicProvider", () => {
 
       expect(callbacks.onError).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: expect.stringContaining("Invalid API key"),
+          message: "Anthropic: invalid x-api-key",
         }),
       );
     });
 
-    it("calls onError on SSE error event with rate limit", async () => {
+    it("calls onError on SSE error event with rate limit raw message", async () => {
       mockGetItemAsync.mockResolvedValue("sk-ant-test-key");
       const mockES = createMockEventSource();
 
@@ -503,7 +503,7 @@ describe("AnthropicProvider", () => {
 
       expect(callbacks.onError).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: expect.stringContaining("Rate limited"),
+          message: "Anthropic: Rate limit exceeded",
         }),
       );
     });
@@ -733,7 +733,7 @@ describe("AnthropicProvider", () => {
 
       expect(callbacks.onError).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: expect.stringContaining("overloaded"),
+          message: "Anthropic: Overloaded",
         }),
       );
     });

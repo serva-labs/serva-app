@@ -1,19 +1,25 @@
 /**
- * User-friendly error mapping for provider API errors.
+ * Error handling for provider API errors.
  *
- * All error messages that reach the user MUST go through this module.
- * Raw API responses, JSON blobs, and JS runtime errors should never
- * be shown directly — they're mapped to plain-language messages here.
+ * Strategy for streaming/chat errors:
+ * - Show the raw `error.message` from the API prefixed with the provider name.
+ *   These messages are already well-written and actionable.
+ * - `sanitizeErrorMessage` is the final guard against JSON blobs, stack traces,
+ *   and XHR internals reaching the UI.
  *
- * Provider adapters call these helpers instead of constructing error
- * strings inline. useChat uses `sanitizeErrorMessage` as a final guard.
+ * Strategy for validation errors (key save in Settings):
+ * - Use per-provider mapped messages for a tighter UX.
+ *
+ * Provider adapters call `messageFromResponseBody` for streaming errors.
+ * Validation functions call `messageForOpenAIError` / `messageForAnthropicError` directly.
+ * useChat calls `sanitizeErrorMessage` as the last line of defense.
  */
 
-// ─── HTTP status → user-friendly message ─────────────────────────────────────
+// ─── HTTP status → fallback message ─────────────────────────────────────────
 
 /**
  * Common HTTP error messages shared across all providers.
- * Provider-specific overrides can be layered on top.
+ * Used as fallback when the API response has no readable error.message.
  */
 const HTTP_STATUS_MESSAGES: Record<number, string> = {
   400: "The request was invalid. Please try again.",
@@ -28,10 +34,11 @@ const HTTP_STATUS_MESSAGES: Record<number, string> = {
   503: "The service is temporarily unavailable. Please try again later.",
 };
 
-// ─── Provider-specific error code mapping ────────────────────────────────────
+// ─── Provider-specific error code mapping (used for validation only) ─────────
 
 /**
  * Known OpenAI error codes (from response body `error.code`).
+ * Used by validateOpenAIKey in Settings — NOT for streaming errors.
  */
 const OPENAI_ERROR_CODES: Record<string, string> = {
   insufficient_quota:
@@ -51,25 +58,8 @@ const OPENAI_ERROR_CODES: Record<string, string> = {
 };
 
 /**
- * Known GitHub Copilot error codes.
- * Copilot uses the OpenAI-compatible format, so codes are similar,
- * but messages reference "GitHub Copilot" for clarity.
- */
-const COPILOT_ERROR_CODES: Record<string, string> = {
-  insufficient_quota:
-    "Your GitHub Copilot subscription may have expired. Check your GitHub settings.",
-  rate_limit_exceeded:
-    "Rate limited by GitHub Copilot. Please wait and try again.",
-  model_not_found:
-    "This model is not available on GitHub Copilot. Try selecting a different model.",
-  context_length_exceeded:
-    "Your conversation is too long for this model. Start a new chat or try a model with a larger context window.",
-  server_error:
-    "GitHub Copilot is experiencing issues. Please try again later.",
-};
-
-/**
  * Known Anthropic error types (from response body `error.type`).
+ * Used by validateAnthropicKey in Settings — NOT for streaming errors.
  */
 const ANTHROPIC_ERROR_TYPES: Record<string, string> = {
   authentication_error:
@@ -93,7 +83,7 @@ const ANTHROPIC_ERROR_TYPES: Record<string, string> = {
 export type ProviderName = "OpenAI" | "Anthropic" | "Google" | "GitHub Copilot";
 
 /**
- * Map an HTTP status code to a user-friendly message.
+ * Map an HTTP status code to a fallback message.
  * Accepts optional provider name for contextual messages.
  */
 export function messageForHttpStatus(
@@ -102,7 +92,6 @@ export function messageForHttpStatus(
 ): string {
   const providerLabel = provider ?? "The service";
 
-  // Provider-specific overrides
   if (status === 429) {
     return `Rate limited by ${providerLabel}. Please wait and try again.`;
   }
@@ -120,8 +109,8 @@ export function messageForHttpStatus(
 }
 
 /**
- * Map an OpenAI error code (from response `error.code`) to a user-friendly message.
- * Falls back to the HTTP status message if the code is unknown.
+ * Map an OpenAI error code to a user-friendly message.
+ * Used for validation (Settings) only.
  */
 export function messageForOpenAIError(
   code: string | null | undefined,
@@ -137,8 +126,8 @@ export function messageForOpenAIError(
 }
 
 /**
- * Map an Anthropic error type (from response `error.type`) to a user-friendly message.
- * Falls back to the HTTP status message if the type is unknown.
+ * Map an Anthropic error type to a user-friendly message.
+ * Used for validation (Settings) only.
  */
 export function messageForAnthropicError(
   errorType: string | null | undefined,
@@ -154,31 +143,29 @@ export function messageForAnthropicError(
 }
 
 /**
- * Map a GitHub Copilot error code (from response `error.code`) to a user-friendly message.
- * Copilot uses OpenAI-compatible format, so we check similar error codes.
- * Falls back to the HTTP status message if the code is unknown.
+ * Map a GitHub Copilot error code to a user-friendly message.
+ * Used for Copilot-specific cases (401 = re-auth needed).
  */
 export function messageForCopilotError(
   code: string | null | undefined,
   httpStatus?: number,
 ): string {
-  if (code && COPILOT_ERROR_CODES[code]) {
-    return COPILOT_ERROR_CODES[code];
+  if (httpStatus === 401) {
+    return "GitHub Copilot: Authorization has expired. Please sign in again from Settings.";
   }
+  // For other codes, fall through to messageFromResponseBody's raw message logic
   if (httpStatus) {
-    // Override 401 specifically for Copilot — it means the JWT expired
-    if (httpStatus === 401) {
-      return "GitHub authorization has expired. Please sign in again from Settings.";
-    }
     return messageForHttpStatus(httpStatus, "GitHub Copilot");
   }
   return "Something went wrong with GitHub Copilot. Please try again.";
 }
 
 /**
- * Safely extract a user-friendly message from a raw error body string.
- * Tries to parse JSON and map known error codes/types.
- * Never returns raw API text — always falls back to a generic message.
+ * Extract a displayable error message from a raw API response body.
+ *
+ * Strategy: show the provider's own `error.message` prefixed with the
+ * provider name. These messages are already human-readable and actionable.
+ * Falls back to HTTP status mapping when no readable message is found.
  */
 export function messageFromResponseBody(
   rawBody: string | undefined | null,
@@ -192,15 +179,16 @@ export function messageFromResponseBody(
   try {
     const parsed = JSON.parse(rawBody);
     const error = parsed?.error;
+    const rawMessage: string | undefined = error?.message;
 
-    if (provider === "OpenAI") {
-      return messageForOpenAIError(error?.code, httpStatus);
-    }
-    if (provider === "Anthropic") {
-      return messageForAnthropicError(error?.type, httpStatus);
-    }
-    if (provider === "GitHub Copilot") {
+    // Special case: Copilot 401 always means re-auth
+    if (provider === "GitHub Copilot" && httpStatus === 401) {
       return messageForCopilotError(error?.code, httpStatus);
+    }
+
+    // If the API gave us a readable message, show it with the provider prefix
+    if (rawMessage && typeof rawMessage === "string" && rawMessage.length > 0) {
+      return `${provider}: ${rawMessage}`;
     }
   } catch {
     // Not JSON — fall through to generic message

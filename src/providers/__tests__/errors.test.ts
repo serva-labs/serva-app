@@ -1,14 +1,19 @@
 /**
- * Unit tests for the shared error mapping utility.
+ * Unit tests for the shared error handling utility.
  *
- * Verifies that all error paths produce user-friendly messages
- * and never leak raw API text, JSON, or stack traces.
+ * Strategy:
+ * - Streaming/chat errors show the raw API error.message prefixed with
+ *   the provider name (via messageFromResponseBody).
+ * - Validation errors (Settings) use per-provider mapped messages
+ *   (messageForOpenAIError, messageForAnthropicError).
+ * - sanitizeErrorMessage is the final guard in useChat.
  */
 
 import {
   messageForHttpStatus,
   messageForOpenAIError,
   messageForAnthropicError,
+  messageForCopilotError,
   messageFromResponseBody,
   messageForNetworkError,
   sanitizeErrorMessage,
@@ -52,7 +57,7 @@ describe("messageForHttpStatus", () => {
   });
 });
 
-// ─── messageForOpenAIError ───────────────────────────────────────────────────
+// ─── messageForOpenAIError (validation only) ─────────────────────────────────
 
 describe("messageForOpenAIError", () => {
   it("maps known OpenAI error codes", () => {
@@ -76,7 +81,7 @@ describe("messageForOpenAIError", () => {
   });
 });
 
-// ─── messageForAnthropicError ────────────────────────────────────────────────
+// ─── messageForAnthropicError (validation only) ──────────────────────────────
 
 describe("messageForAnthropicError", () => {
   it("maps known Anthropic error types", () => {
@@ -100,21 +105,71 @@ describe("messageForAnthropicError", () => {
   });
 });
 
+// ─── messageForCopilotError ──────────────────────────────────────────────────
+
+describe("messageForCopilotError", () => {
+  it("returns re-auth message for 401", () => {
+    expect(messageForCopilotError(null, 401)).toContain("Authorization has expired");
+    expect(messageForCopilotError(null, 401)).toContain("sign in again");
+  });
+
+  it("falls back to HTTP status for other codes", () => {
+    expect(messageForCopilotError(null, 429)).toContain("Rate limited");
+    expect(messageForCopilotError(null, 500)).toContain("experiencing issues");
+  });
+
+  it("falls back to generic message when no status", () => {
+    expect(messageForCopilotError(null)).toContain("Something went wrong");
+  });
+});
+
 // ─── messageFromResponseBody ─────────────────────────────────────────────────
 
 describe("messageFromResponseBody", () => {
-  it("parses OpenAI JSON body and maps error code", () => {
+  it("shows raw API message prefixed with provider name (OpenAI)", () => {
     const body = JSON.stringify({
-      error: { code: "insufficient_quota", message: "You exceeded quota" },
+      error: { code: "insufficient_quota", message: "You exceeded your current quota" },
     });
-    expect(messageFromResponseBody(body, 429, "OpenAI")).toContain("Quota exceeded");
+    const result = messageFromResponseBody(body, 429, "OpenAI");
+    expect(result).toBe("OpenAI: You exceeded your current quota");
   });
 
-  it("parses Anthropic JSON body and maps error type", () => {
+  it("shows raw API message prefixed with provider name (Anthropic)", () => {
     const body = JSON.stringify({
       error: { type: "rate_limit_error", message: "Rate limit exceeded" },
     });
-    expect(messageFromResponseBody(body, 429, "Anthropic")).toContain("Rate limited");
+    const result = messageFromResponseBody(body, 429, "Anthropic");
+    expect(result).toBe("Anthropic: Rate limit exceeded");
+  });
+
+  it("shows raw Anthropic credit balance message with prefix", () => {
+    const body = JSON.stringify({
+      error: {
+        type: "invalid_request_error",
+        message: "Your credit balance is too low to access the Anthropic API.",
+      },
+    });
+    const result = messageFromResponseBody(body, 400, "Anthropic");
+    expect(result).toBe(
+      "Anthropic: Your credit balance is too low to access the Anthropic API.",
+    );
+  });
+
+  it("shows raw Copilot message with prefix", () => {
+    const body = JSON.stringify({
+      error: { message: "Model not available" },
+    });
+    const result = messageFromResponseBody(body, 404, "GitHub Copilot");
+    expect(result).toBe("GitHub Copilot: Model not available");
+  });
+
+  it("uses special Copilot 401 message instead of raw message", () => {
+    const body = JSON.stringify({
+      error: { message: "Unauthorized" },
+    });
+    const result = messageFromResponseBody(body, 401, "GitHub Copilot");
+    expect(result).toContain("Authorization has expired");
+    expect(result).toContain("sign in again");
   });
 
   it("falls back to HTTP status when body is null", () => {
@@ -127,20 +182,14 @@ describe("messageFromResponseBody", () => {
     );
   });
 
-  it("falls back to HTTP status when body has no error field", () => {
+  it("falls back to HTTP status when body has no error.message field", () => {
     const body = JSON.stringify({ status: "error" });
     expect(messageFromResponseBody(body, 503, "OpenAI")).toContain("experiencing issues");
   });
 
-  it("never returns raw API message text", () => {
-    const body = JSON.stringify({
-      error: {
-        code: "some_unknown_code",
-        message: "You should NEVER see this raw text in the UI",
-      },
-    });
-    const result = messageFromResponseBody(body, 400, "OpenAI");
-    expect(result).not.toContain("NEVER see this");
+  it("falls back to HTTP status when error.message is empty string", () => {
+    const body = JSON.stringify({ error: { message: "" } });
+    expect(messageFromResponseBody(body, 429, "OpenAI")).toContain("Rate limited");
   });
 });
 
@@ -161,6 +210,12 @@ describe("sanitizeErrorMessage", () => {
     expect(sanitizeErrorMessage("Rate limited by OpenAI. Please wait and try again.")).toBe(
       "Rate limited by OpenAI. Please wait and try again.",
     );
+  });
+
+  it("passes through provider-prefixed raw messages", () => {
+    expect(
+      sanitizeErrorMessage("OpenAI: You exceeded your current quota"),
+    ).toBe("OpenAI: You exceeded your current quota");
   });
 
   it("rejects raw JSON strings", () => {

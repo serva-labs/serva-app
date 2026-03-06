@@ -291,9 +291,14 @@ export class AnthropicProvider implements LLMProvider {
           if (errorEvent.data) {
             try {
               const parsed = JSON.parse(errorEvent.data);
-              errorMessage = messageForAnthropicError(parsed.error?.type);
+              const rawMsg = parsed.error?.message;
+              if (rawMsg && typeof rawMsg === "string") {
+                errorMessage = `Anthropic: ${rawMsg}`;
+              } else {
+                errorMessage = "Something went wrong with Anthropic. Please try again.";
+              }
             } catch {
-              errorMessage = messageForAnthropicError(undefined);
+              errorMessage = "Something went wrong with Anthropic. Please try again.";
             }
           } else if (errorEvent.xhrStatus) {
             // Connection-level error from react-native-sse
@@ -303,7 +308,7 @@ export class AnthropicProvider implements LLMProvider {
               "Anthropic",
             );
           } else {
-            errorMessage = messageForAnthropicError(undefined);
+            errorMessage = "Something went wrong with Anthropic. Please try again.";
           }
 
           callbacks.onError(new Error(errorMessage));
