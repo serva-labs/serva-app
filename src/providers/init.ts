@@ -8,6 +8,7 @@
 import { OpenAIProvider } from "./openai";
 import { AnthropicProvider } from "./anthropic";
 import { GitHubCopilotProvider } from "./github-copilot";
+import { GoogleProvider } from "./google";
 import { registerProvider } from "./registry";
 import { hasCredentials } from "@/src/hooks/useSecureStorage";
 import { useProvidersStore } from "@/src/store/providers";
@@ -27,6 +28,7 @@ export async function initializeProviders(): Promise<void> {
   const openai = new OpenAIProvider();
   const anthropic = new AnthropicProvider();
   const copilot = new GitHubCopilotProvider();
+  const google = new GoogleProvider();
 
   // Check which providers have stored credentials
   const openaiConfigured = await hasCredentials("openai");
@@ -38,16 +40,21 @@ export async function initializeProviders(): Promise<void> {
   const copilotConfigured = await hasCredentials("github-copilot");
   copilot.config.isConfigured = copilotConfigured;
 
+  const googleConfigured = await hasCredentials("google");
+  google.config.isConfigured = googleConfigured;
+
   // Register in the provider registry
   registerProvider(openai);
   registerProvider(anthropic);
   registerProvider(copilot);
+  registerProvider(google);
 
   // Sync to Zustand store so UI can react
   const configs: ProviderConfig[] = [
     openai.config,
     anthropic.config,
     copilot.config,
+    google.config,
   ];
 
   useProvidersStore.getState().setProviders(configs);
@@ -65,6 +72,10 @@ export async function initializeProviders(): Promise<void> {
     useProvidersStore
       .getState()
       .setActiveProviderAndModel("github-copilot", "gpt-4o");
+  } else if (googleConfigured) {
+    useProvidersStore
+      .getState()
+      .setActiveProviderAndModel("google", "gemini-2.5-flash");
   }
 }
 

@@ -11,7 +11,7 @@
  * - Use per-provider mapped messages for a tighter UX.
  *
  * Provider adapters call `messageFromResponseBody` for streaming errors.
- * Validation functions call `messageForOpenAIError` / `messageForAnthropicError` directly.
+ * Validation functions call `messageForOpenAIError` / `messageForAnthropicError` / `messageForGoogleError` directly.
  * useChat calls `sanitizeErrorMessage` as the last line of defense.
  */
 
@@ -55,6 +55,27 @@ const OPENAI_ERROR_CODES: Record<string, string> = {
     "Your OpenAI spending limit has been reached. Check your billing settings.",
   server_error:
     "OpenAI is experiencing issues. Please try again later.",
+};
+
+/**
+ * Known Google AI error statuses (from response body `error.status`).
+ * Used by validateGoogleKey in Settings — NOT for streaming errors.
+ */
+const GOOGLE_ERROR_STATUSES: Record<string, string> = {
+  INVALID_ARGUMENT:
+    "Invalid API key format. Check your key in Settings.",
+  PERMISSION_DENIED:
+    "API key is not authorized. Enable the Generative Language API in your Google Cloud console.",
+  NOT_FOUND:
+    "The requested model was not found. Try selecting a different model.",
+  RESOURCE_EXHAUSTED:
+    "Quota exceeded. Check your Google AI usage limits.",
+  UNAUTHENTICATED:
+    "Invalid API key. Check your key in Settings.",
+  UNAVAILABLE:
+    "Google AI is temporarily unavailable. Please try again later.",
+  INTERNAL:
+    "Google AI is experiencing issues. Please try again later.",
 };
 
 /**
@@ -140,6 +161,23 @@ export function messageForAnthropicError(
     return messageForHttpStatus(httpStatus, "Anthropic");
   }
   return "Something went wrong with Anthropic. Please try again.";
+}
+
+/**
+ * Map a Google AI error status to a user-friendly message.
+ * Used for validation (Settings) only.
+ */
+export function messageForGoogleError(
+  errorStatus: string | null | undefined,
+  httpStatus?: number,
+): string {
+  if (errorStatus && GOOGLE_ERROR_STATUSES[errorStatus]) {
+    return GOOGLE_ERROR_STATUSES[errorStatus];
+  }
+  if (httpStatus) {
+    return messageForHttpStatus(httpStatus, "Google");
+  }
+  return "Something went wrong with Google AI. Please try again.";
 }
 
 /**

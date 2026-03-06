@@ -20,6 +20,7 @@ import {
 } from "@/src/hooks/useSecureStorage";
 import { validateOpenAIKey } from "@/src/providers/openai";
 import { validateAnthropicKey } from "@/src/providers/anthropic";
+import { validateGoogleKey } from "@/src/providers/google";
 import {
   requestDeviceCode,
   pollForToken,
@@ -85,6 +86,13 @@ function ProviderKeyCard({
       }
     } else if (providerId === "anthropic") {
       const result = await validateAnthropicKey(trimmed);
+      if (!result.valid) {
+        setStatus("invalid");
+        setErrorMessage(result.error ?? "Invalid key.");
+        return;
+      }
+    } else if (providerId === "google") {
+      const result = await validateGoogleKey(trimmed);
       if (!result.valid) {
         setStatus("invalid");
         setErrorMessage(result.error ?? "Invalid key.");
