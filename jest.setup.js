@@ -18,3 +18,10 @@ jest.mock("expo-clipboard", () => ({
   getStringAsync: jest.fn().mockResolvedValue(""),
   hasStringAsync: jest.fn().mockResolvedValue(false),
 }));
+
+// Mock expo-web-browser
+jest.mock("expo-web-browser", () => ({
+  openBrowserAsync: jest.fn().mockResolvedValue({ type: "cancel" }),
+  openAuthSessionAsync: jest.fn().mockResolvedValue({ type: "cancel" }),
+  dismissBrowser: jest.fn(),
+}));

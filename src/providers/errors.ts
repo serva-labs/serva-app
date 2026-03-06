@@ -51,6 +51,24 @@ const OPENAI_ERROR_CODES: Record<string, string> = {
 };
 
 /**
+ * Known GitHub Copilot error codes.
+ * Copilot uses the OpenAI-compatible format, so codes are similar,
+ * but messages reference "GitHub Copilot" for clarity.
+ */
+const COPILOT_ERROR_CODES: Record<string, string> = {
+  insufficient_quota:
+    "Your GitHub Copilot subscription may have expired. Check your GitHub settings.",
+  rate_limit_exceeded:
+    "Rate limited by GitHub Copilot. Please wait and try again.",
+  model_not_found:
+    "This model is not available on GitHub Copilot. Try selecting a different model.",
+  context_length_exceeded:
+    "Your conversation is too long for this model. Start a new chat or try a model with a larger context window.",
+  server_error:
+    "GitHub Copilot is experiencing issues. Please try again later.",
+};
+
+/**
  * Known Anthropic error types (from response body `error.type`).
  */
 const ANTHROPIC_ERROR_TYPES: Record<string, string> = {
@@ -136,6 +154,28 @@ export function messageForAnthropicError(
 }
 
 /**
+ * Map a GitHub Copilot error code (from response `error.code`) to a user-friendly message.
+ * Copilot uses OpenAI-compatible format, so we check similar error codes.
+ * Falls back to the HTTP status message if the code is unknown.
+ */
+export function messageForCopilotError(
+  code: string | null | undefined,
+  httpStatus?: number,
+): string {
+  if (code && COPILOT_ERROR_CODES[code]) {
+    return COPILOT_ERROR_CODES[code];
+  }
+  if (httpStatus) {
+    // Override 401 specifically for Copilot — it means the JWT expired
+    if (httpStatus === 401) {
+      return "GitHub authorization has expired. Please sign in again from Settings.";
+    }
+    return messageForHttpStatus(httpStatus, "GitHub Copilot");
+  }
+  return "Something went wrong with GitHub Copilot. Please try again.";
+}
+
+/**
  * Safely extract a user-friendly message from a raw error body string.
  * Tries to parse JSON and map known error codes/types.
  * Never returns raw API text — always falls back to a generic message.
@@ -158,6 +198,9 @@ export function messageFromResponseBody(
     }
     if (provider === "Anthropic") {
       return messageForAnthropicError(error?.type, httpStatus);
+    }
+    if (provider === "GitHub Copilot") {
+      return messageForCopilotError(error?.code, httpStatus);
     }
   } catch {
     // Not JSON — fall through to generic message

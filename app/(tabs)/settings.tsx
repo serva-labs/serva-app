@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -7,9 +7,12 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Modal,
   useColorScheme,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
+import * as WebBrowser from "expo-web-browser";
 import {
   getApiKey,
   setApiKey,
@@ -17,6 +20,12 @@ import {
 } from "@/src/hooks/useSecureStorage";
 import { validateOpenAIKey } from "@/src/providers/openai";
 import { validateAnthropicKey } from "@/src/providers/anthropic";
+import {
+  requestDeviceCode,
+  pollForToken,
+  isSignedIn,
+  signOut,
+} from "@/src/providers/github-copilot/auth";
 import { useProvidersStore } from "@/src/store/providers";
 import { getProvider } from "@/src/providers/registry";
 
@@ -220,6 +229,274 @@ function ProviderKeyCard({
   );
 }
 
+// ─── GitHub Copilot OAuth Card ───────────────────────────────────────────────
+
+type CopilotStatus = "disconnected" | "requesting" | "polling" | "connected" | "error";
+
+interface GitHubCopilotCardProps {
+  onStatusChange?: (providerId: string, isConfigured: boolean) => void;
+}
+
+function GitHubCopilotCard({ onStatusChange }: GitHubCopilotCardProps) {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
+
+  const [status, setStatus] = useState<CopilotStatus>("disconnected");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [userCode, setUserCode] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Check if already signed in on mount
+  useEffect(() => {
+    (async () => {
+      const signedIn = await isSignedIn();
+      if (signedIn) {
+        setStatus("connected");
+      }
+    })();
+  }, []);
+
+  const handleSignIn = useCallback(async () => {
+    setStatus("requesting");
+    setErrorMessage("");
+
+    try {
+      const deviceCode = await requestDeviceCode();
+      setUserCode(deviceCode.user_code);
+      setShowModal(true);
+      setStatus("polling");
+
+      // Start polling in the background
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        await pollForToken(
+          deviceCode.device_code,
+          deviceCode.interval,
+          deviceCode.expires_in,
+          controller.signal,
+        );
+
+        // Success!
+        setShowModal(false);
+        setStatus("connected");
+        setUserCode("");
+        onStatusChange?.("github-copilot", true);
+      } catch (pollError) {
+        if (!controller.signal.aborted) {
+          setShowModal(false);
+          setStatus("error");
+          setErrorMessage(
+            pollError instanceof Error
+              ? pollError.message
+              : "Authorization failed. Please try again.",
+          );
+        }
+      }
+    } catch (err) {
+      setStatus("error");
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : "Could not start sign-in. Please try again.",
+      );
+    }
+  }, [onStatusChange]);
+
+  const handleCopyAndOpen = useCallback(async () => {
+    await Clipboard.setStringAsync(userCode);
+    await WebBrowser.openBrowserAsync("https://github.com/login/device");
+  }, [userCode]);
+
+  const handleCancelAuth = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setShowModal(false);
+    setStatus("disconnected");
+    setUserCode("");
+    setErrorMessage("");
+  }, []);
+
+  const handleSignOut = useCallback(() => {
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to disconnect GitHub Copilot?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            await signOut();
+            setStatus("disconnected");
+            onStatusChange?.("github-copilot", false);
+          },
+        },
+      ],
+    );
+  }, [onStatusChange]);
+
+  const statusIcon = () => {
+    switch (status) {
+      case "connected":
+        return (
+          <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
+        );
+      case "requesting":
+      case "polling":
+        return (
+          <ActivityIndicator
+            size="small"
+            color={isDark ? "#818CF8" : "#4F46E5"}
+          />
+        );
+      case "error":
+        return <Ionicons name="alert-circle" size={20} color="#EF4444" />;
+      default:
+        return (
+          <Ionicons
+            name="logo-github"
+            size={20}
+            color={isDark ? "#9CA3AF" : "#6B7280"}
+          />
+        );
+    }
+  };
+
+  return (
+    <>
+      <View className="mb-4 rounded-2xl bg-gray-50 dark:bg-gray-800 p-4">
+        {/* Header */}
+        <View className="flex-row items-center justify-between mb-3">
+          <View className="flex-row items-center gap-2">
+            {statusIcon()}
+            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
+              GitHub Copilot
+            </Text>
+          </View>
+          {status === "connected" && (
+            <Pressable onPress={handleSignOut} hitSlop={8}>
+              <Text className="text-sm text-red-500">Sign Out</Text>
+            </Pressable>
+          )}
+        </View>
+
+        {/* Connected state */}
+        {status === "connected" && (
+          <Text className="text-sm text-green-600 dark:text-green-400">
+            Connected — access GPT, Claude, Gemini, and more via your Copilot
+            subscription.
+          </Text>
+        )}
+
+        {/* Disconnected / error state — show sign-in button */}
+        {(status === "disconnected" || status === "error") && (
+          <Pressable
+            onPress={handleSignIn}
+            className="rounded-xl bg-gray-900 dark:bg-white py-2.5 px-4 flex-row items-center justify-center gap-2"
+          >
+            <Ionicons
+              name="logo-github"
+              size={18}
+              color={isDark ? "#111827" : "#FFFFFF"}
+            />
+            <Text className="text-sm font-medium text-white dark:text-gray-900">
+              Sign in with GitHub
+            </Text>
+          </Pressable>
+        )}
+
+        {/* Requesting state */}
+        {status === "requesting" && (
+          <Text className="text-sm text-gray-500 dark:text-gray-400">
+            Requesting authorization...
+          </Text>
+        )}
+
+        {/* Polling state (modal is also shown) */}
+        {status === "polling" && (
+          <Text className="text-sm text-gray-500 dark:text-gray-400">
+            Waiting for authorization...
+          </Text>
+        )}
+
+        {/* Error message */}
+        {errorMessage ? (
+          <Text className="mt-2 text-sm text-red-500">{errorMessage}</Text>
+        ) : null}
+
+        {/* Info text for disconnected state */}
+        {status === "disconnected" && (
+          <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+            Requires a GitHub Copilot subscription. Sign in via GitHub OAuth.
+          </Text>
+        )}
+      </View>
+
+      {/* Device Code Modal */}
+      <Modal
+        visible={showModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelAuth}
+      >
+        <View className="flex-1 justify-center items-center bg-black/50 px-6">
+          <View className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-800 p-6">
+            <Text className="text-lg font-bold text-gray-900 dark:text-gray-100 text-center mb-2">
+              Enter Code on GitHub
+            </Text>
+            <Text className="text-sm text-gray-500 dark:text-gray-400 text-center mb-4">
+              Copy the code below and enter it at GitHub to authorize Serva.
+            </Text>
+
+            {/* Device code display */}
+            <View className="rounded-xl bg-gray-100 dark:bg-gray-700 py-4 px-6 mb-4">
+              <Text className="text-2xl font-mono font-bold text-center text-gray-900 dark:text-gray-100 tracking-widest">
+                {userCode}
+              </Text>
+            </View>
+
+            {/* Copy & Open button */}
+            <Pressable
+              onPress={handleCopyAndOpen}
+              className="rounded-xl bg-gray-900 dark:bg-white py-3 px-4 flex-row items-center justify-center gap-2 mb-3"
+            >
+              <Ionicons
+                name="copy-outline"
+                size={18}
+                color={isDark ? "#111827" : "#FFFFFF"}
+              />
+              <Text className="text-sm font-medium text-white dark:text-gray-900">
+                Copy Code & Open GitHub
+              </Text>
+            </Pressable>
+
+            {/* Polling indicator */}
+            <View className="flex-row items-center justify-center gap-2 mb-4">
+              <ActivityIndicator
+                size="small"
+                color={isDark ? "#818CF8" : "#4F46E5"}
+              />
+              <Text className="text-xs text-gray-500 dark:text-gray-400">
+                Waiting for you to authorize...
+              </Text>
+            </View>
+
+            {/* Cancel button */}
+            <Pressable onPress={handleCancelAuth} className="py-2">
+              <Text className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                Cancel
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
 // ─── Settings Screen ─────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
@@ -296,18 +573,8 @@ export default function SettingsScreen() {
         onStatusChange={handleStatusChange}
       />
 
-      {/* GitHub Copilot will use OAuth, not key entry — placeholder for now */}
-      <View className="mb-4 rounded-2xl bg-gray-50 dark:bg-gray-800 p-4">
-        <View className="flex-row items-center gap-2 mb-2">
-          <Ionicons name="ellipse-outline" size={20} color={isDark ? "#6B7280" : "#9CA3AF"} />
-          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-            GitHub Copilot
-          </Text>
-        </View>
-        <Text className="text-sm text-gray-500 dark:text-gray-400">
-          OAuth sign-in coming in a future update.
-        </Text>
-      </View>
+      {/* GitHub Copilot — OAuth device flow */}
+      <GitHubCopilotCard onStatusChange={handleStatusChange} />
 
       {/* App info */}
       <View className="mt-8 items-center">
