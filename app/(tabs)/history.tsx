@@ -214,7 +214,7 @@ export default function HistoryScreen() {
   const handlePress = useCallback(
     async (conversationId: string) => {
       await loadConversation(conversationId);
-      router.push("/(tabs)/");
+      router.push("/(tabs)");
     },
     [loadConversation, router],
   );
