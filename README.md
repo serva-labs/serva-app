@@ -2,18 +2,28 @@
 
 A cross-platform mobile app for chatting with LLMs from multiple providers through a single unified interface. Bring your own API keys — no backend server, no data collection. All credentials and conversations are stored locally on your device.
 
-**Supported providers:** OpenAI (live), GitHub Copilot (planned), Anthropic (planned), Google (planned)
+**Supported providers:** OpenAI, Anthropic, GitHub Copilot, Google Gemini
 
 ## Features
 
-- Multi-provider text chat through a single interface
+- Chat with GPT-4o, Claude Sonnet 4, Gemini 2.5 Pro, and 25+ more models
 - Streaming responses (token-by-token rendering)
 - Markdown rendering with syntax-highlighted code blocks and copy button
-- Conversation history with search and delete
-- Model selection per conversation (GPT-4o, GPT-4.1, o4-mini, etc.)
+- Conversation history with tap to continue and swipe to delete
+- Model selection per conversation — switch between any configured provider
+- GitHub Copilot integration via OAuth device flow (use your Copilot subscription)
 - Dark and light mode (follows system preference)
-- API key validation on save
+- API key validation on save for all providers
 - No backend — all API calls go directly from your device to the provider
+
+## Providers and models
+
+| Provider | Auth | Models |
+|---|---|---|
+| OpenAI | API key | GPT-4o, GPT-4o mini, GPT-4.1, GPT-4.1 mini, GPT-4.1 nano, o4-mini, o3-mini |
+| Anthropic | API key | Claude Opus 4, Claude Sonnet 4, Claude Sonnet 4.5, Claude Haiku 3.5 |
+| GitHub Copilot | OAuth (device flow) | GPT-4o, GPT-4.1, Claude Sonnet 4, Claude 3.5/3.7 Sonnet, Gemini 2.0 Flash, Gemini 2.5 Pro, o1, o3-mini, o4-mini |
+| Google Gemini | API key | Gemini 2.5 Pro, 2.5 Flash, 2.5 Flash-Lite, 2.0 Flash, 2.0 Flash-Lite, 3.1 Pro (Preview), 3 Flash (Preview), 3.1 Flash-Lite (Preview) |
 
 ## Tech stack
 
@@ -28,6 +38,7 @@ A cross-platform mobile app for chatting with LLMs from multiple providers throu
 | Secure storage | expo-secure-store (Keychain / Keystore) |
 | Streaming | react-native-sse |
 | Markdown | react-native-markdown-display |
+| Builds | EAS Build (Expo Application Services) |
 
 ## Prerequisites
 
@@ -59,10 +70,12 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and add your OpenAI API key:
+Edit `.env` and add your API keys:
 
 ```
 OPENAI_API_KEY=sk-your-key-here
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+GOOGLE_API_KEY=AIza-your-key-here
 ```
 
 This is only needed for integration tests. The app itself stores API keys through its Settings screen using encrypted device storage.
@@ -111,7 +124,30 @@ This will boot the simulator and load the app automatically. On subsequent runs,
 
 ---
 
-#### Option B: Physical device with Expo Go (any OS, quickest setup)
+#### Option B: Android Emulator
+
+1. Install [Android Studio](https://developer.android.com/studio)
+2. During setup, ensure these are installed:
+   - Android SDK
+   - Android SDK Platform-Tools
+   - Android Virtual Device (AVD)
+3. Set the `ANDROID_HOME` environment variable (add to `~/.zprofile` or `~/.zshrc`):
+
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+```
+
+4. Open Android Studio > **Device Manager** > Create a device (e.g., Pixel 8, API 35)
+5. Start the emulator from Device Manager, then:
+
+```bash
+npx expo start --android
+```
+
+---
+
+#### Option C: Physical device with Expo Go (any OS, quickest setup)
 
 This requires no simulator or emulator at all. Your phone and laptop must be on the same Wi-Fi network.
 
@@ -135,30 +171,56 @@ The app will load on your phone with hot reload. Code changes appear in ~1-2 sec
 
 ---
 
-#### Option C: Android Emulator
-
-1. Install [Android Studio](https://developer.android.com/studio)
-2. During setup, ensure these are installed:
-   - Android SDK
-   - Android SDK Platform-Tools
-   - Android Virtual Device (AVD)
-3. Open Android Studio > **Virtual Device Manager** > Create a device (e.g., Pixel 8, API 34)
-4. Start the emulator from AVD Manager, then:
-
-```bash
-npx expo start --android
-```
-
----
-
 ### 4. First launch walkthrough
 
-1. The app opens to the **Chat** tab showing "No API key configured"
+1. The app opens to the **Chat** tab showing "No provider configured"
 2. Tap **Go to Settings** (or the Settings tab)
-3. Enter your OpenAI API key and tap **Save** — the key is validated against OpenAI's API
-4. Go back to the **Chat** tab — the model picker in the header shows "GPT-4o"
-5. Type a message and tap send
-6. The assistant's response streams in token-by-token with markdown rendering
+3. Enter an API key for any provider and tap **Save** — the key is validated against the provider's API
+4. For GitHub Copilot, tap **Sign in with GitHub** and follow the OAuth device flow
+5. Go back to the **Chat** tab — the model picker in the header shows the default model
+6. Type a message and tap send
+7. The assistant's response streams in token-by-token with markdown rendering
+
+## Building for Android (APK)
+
+You can build a standalone APK and install it directly on your Android phone without going through the Play Store.
+
+### Prerequisites
+
+- Free [Expo account](https://expo.dev/signup)
+- `eas-cli` installed globally: `npm install -g eas-cli`
+
+### Build the APK
+
+```bash
+# Log in to your Expo account
+eas login
+
+# Build an APK (runs in the cloud, ~5-10 minutes)
+eas build --platform android --profile preview
+```
+
+The first build will prompt you to confirm creating the project on Expo and generating an Android keystore — say yes to both.
+
+When the build completes, EAS gives you a download URL for the APK.
+
+### Install on your phone
+
+1. Download the APK to your Android phone (via the link, email, USB, etc.)
+2. On your phone, go to **Settings > Security** and enable **Install from unknown sources**
+3. Open the APK file to install
+
+### Install on an emulator
+
+If you have Android Studio and an emulator set up, EAS can install the APK directly:
+
+```bash
+# Build and install on a running emulator
+eas build --platform android --profile preview --local
+adb install path/to/build.apk
+```
+
+Or let EAS handle it during the build flow — it will offer to install on a detected emulator automatically.
 
 ## Project structure
 
@@ -170,7 +232,7 @@ serva-app/
 │       ├── _layout.tsx           # Tab navigator with header buttons
 │       ├── index.tsx             # Chat screen
 │       ├── history.tsx           # Conversation history
-│       └── settings.tsx          # API key management
+│       └── settings.tsx          # API key management + GitHub OAuth
 ├── src/
 │   ├── components/
 │   │   ├── ChatMessage.tsx       # Message bubble with markdown rendering
@@ -182,7 +244,13 @@ serva-app/
 │   ├── providers/
 │   │   ├── types.ts              # LLMProvider interface and core types
 │   │   ├── registry.ts           # Provider registry (singleton map)
-│   │   ├── openai.ts             # OpenAI adapter (streaming, validation)
+│   │   ├── errors.ts             # Error mapping and sanitization
+│   │   ├── openai.ts             # OpenAI adapter (7 models)
+│   │   ├── anthropic.ts          # Anthropic adapter (4 models)
+│   │   ├── google.ts             # Google Gemini adapter (8 models)
+│   │   ├── github-copilot/       # GitHub Copilot adapter (10 models)
+│   │   │   ├── index.ts          # LLMProvider implementation
+│   │   │   └── auth.ts           # OAuth device flow
 │   │   └── init.ts               # Provider initialization on app startup
 │   ├── store/
 │   │   ├── chat.ts               # Zustand: messages, streaming state
@@ -194,6 +262,7 @@ serva-app/
 │       └── Colors.ts             # Theme color values
 ├── docs/                         # Architecture and phase documentation
 ├── assets/                       # Fonts, icons, splash images
+├── eas.json                      # EAS Build configuration
 ├── jest.config.js                # Unit test config (ts-jest, node env)
 ├── jest.integration.config.js    # Integration test config
 └── jest.setup.js                 # Test mocks for native modules
@@ -207,7 +276,7 @@ serva-app/
 npm test
 ```
 
-Runs 21 tests covering the OpenAI provider adapter — validation, configuration, streaming, error handling, abort, and multi-turn conversations. All native modules are mocked.
+Runs 151 tests across 6 suites covering all provider adapters — validation, configuration, streaming, error handling, abort, multi-turn conversations, and error sanitization. All native modules are mocked.
 
 ### Watch mode
 
@@ -217,13 +286,13 @@ npm run test:watch
 
 ### Integration tests
 
-These hit the real OpenAI API and require a valid API key in `.env`:
+These hit real provider APIs and require valid API keys in `.env`:
 
 ```bash
 npm run test:integration
 ```
 
-If `OPENAI_API_KEY` is not set, integration tests are skipped automatically.
+Tests are skipped automatically for any provider whose API key is not set.
 
 ### Type checking
 
@@ -238,7 +307,7 @@ npx tsc --noEmit
 | `npm start` | `expo start` | Start Expo dev server (shows QR code) |
 | `npm run ios` | `expo start --ios` | Start and open in iOS Simulator |
 | `npm run android` | `expo start --android` | Start and open in Android Emulator |
-| `npm test` | `jest` | Run unit tests |
+| `npm test` | `jest` | Run unit tests (151 tests, 6 suites) |
 | `npm run test:watch` | `jest --watch` | Run tests in watch mode |
 | `npm run test:integration` | `jest --config jest.integration.config.js` | Run integration tests (needs `.env`) |
 | `npm run lint` | `expo lint` | Run ESLint |
@@ -248,6 +317,17 @@ npx tsc --noEmit
 ### "No simulator runtime available"
 
 You have Xcode installed but haven't downloaded the iOS Simulator runtime yet. Open Xcode > Settings > Platforms and download the iOS runtime. See [Option A](#option-a-ios-simulator-recommended-for-macos) above.
+
+### "adb executable doesn't seem to work"
+
+Your Android SDK environment variables aren't set. Add to your shell config (`~/.zprofile` or `~/.zshrc`):
+
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+```
+
+Then open a new terminal window and verify: `adb --version`
 
 ### Node.js version warnings
 
