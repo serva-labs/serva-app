@@ -24,6 +24,7 @@ import {
   type Conversation,
 } from "@/src/store/conversations";
 import { getProvider } from "@/src/providers/registry";
+import { sanitizeErrorMessage } from "@/src/providers/errors";
 import type { Message, StreamController } from "@/src/providers/types";
 
 function generateId(): string {
@@ -212,11 +213,13 @@ export function useChat() {
 
             // Add an ephemeral error message so the user sees what went wrong.
             // NOT persisted to SQLite — errors are transient.
+            // sanitizeErrorMessage is the final safety net — it catches any
+            // raw JSON, stack traces, or technical jargon that slipped through.
             store.addMessage({
               id: generateId(),
               conversationId: finalConversationId,
               role: "assistant",
-              content: `Error: ${error.message}`,
+              content: sanitizeErrorMessage(error.message),
               providerId: snapshotProviderId,
               modelId: snapshotModelId,
               createdAt: Date.now(),

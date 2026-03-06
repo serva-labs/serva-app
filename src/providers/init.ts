@@ -6,6 +6,7 @@
  */
 
 import { OpenAIProvider } from "./openai";
+import { AnthropicProvider } from "./anthropic";
 import { registerProvider } from "./registry";
 import { hasCredentials } from "@/src/hooks/useSecureStorage";
 import { useProvidersStore } from "@/src/store/providers";
@@ -23,16 +24,21 @@ export async function initializeProviders(): Promise<void> {
 
   // Create provider instances
   const openai = new OpenAIProvider();
+  const anthropic = new AnthropicProvider();
 
   // Check which providers have stored credentials
   const openaiConfigured = await hasCredentials("openai");
   openai.config.isConfigured = openaiConfigured;
 
+  const anthropicConfigured = await hasCredentials("anthropic");
+  anthropic.config.isConfigured = anthropicConfigured;
+
   // Register in the provider registry
   registerProvider(openai);
+  registerProvider(anthropic);
 
   // Sync to Zustand store so UI can react
-  const configs: ProviderConfig[] = [openai.config];
+  const configs: ProviderConfig[] = [openai.config, anthropic.config];
 
   useProvidersStore.getState().setProviders(configs);
 
@@ -41,6 +47,10 @@ export async function initializeProviders(): Promise<void> {
     useProvidersStore
       .getState()
       .setActiveProviderAndModel("openai", "gpt-4o");
+  } else if (anthropicConfigured) {
+    useProvidersStore
+      .getState()
+      .setActiveProviderAndModel("anthropic", "claude-sonnet-4-6");
   }
 }
 

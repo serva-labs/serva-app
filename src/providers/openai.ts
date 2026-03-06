@@ -12,6 +12,11 @@
 
 import EventSource from "react-native-sse";
 import { getApiKey } from "@/src/hooks/useSecureStorage";
+import {
+  messageForOpenAIError,
+  messageFromResponseBody,
+  messageForNetworkError,
+} from "./errors";
 import type {
   LLMProvider,
   ProviderConfig,
@@ -122,19 +127,13 @@ export async function validateOpenAIKey(
       return { valid: false, error: "Invalid API key." };
     }
 
-    if (response.status === 429) {
-      return { valid: false, error: "Rate limited. Please try again later." };
-    }
-
     const body = await response.json().catch(() => null);
-    const errorMessage =
-      body?.error?.message ?? `Unexpected error (HTTP ${response.status}).`;
-    return { valid: false, error: errorMessage };
-  } catch (err) {
+    const error = messageForOpenAIError(body?.error?.code, response.status);
+    return { valid: false, error };
+  } catch {
     return {
       valid: false,
-      error:
-        err instanceof Error ? err.message : "Network error. Check your connection.",
+      error: messageForNetworkError(),
     };
   }
 }
@@ -237,22 +236,20 @@ export class OpenAIProvider implements LLMProvider {
             const errorEvent = event as {
               message: string;
               xhrStatus: number;
+              xhrState: number;
             };
 
-            let errorMessage: string;
-            if (errorEvent.xhrStatus === 401) {
-              errorMessage =
-                "Invalid API key. Check your key in Settings.";
-            } else if (errorEvent.xhrStatus === 429) {
-              errorMessage =
-                "Rate limited by OpenAI. Please wait and try again.";
-            } else if (errorEvent.xhrStatus === 500 || errorEvent.xhrStatus === 503) {
-              errorMessage =
-                "OpenAI is experiencing issues. Please try again later.";
-            } else {
-              errorMessage =
-                errorEvent.message || `Request failed (HTTP ${errorEvent.xhrStatus}).`;
+            // react-native-sse fires error for both LOADING (3) and DONE (4)
+            // states. Only process once the full response is available.
+            if (errorEvent.xhrState !== 4 && errorEvent.xhrState !== undefined) {
+              return;
             }
+
+            const errorMessage = messageFromResponseBody(
+              errorEvent.message,
+              errorEvent.xhrStatus,
+              "OpenAI",
+            );
 
             callbacks.onError(new Error(errorMessage));
           }
@@ -266,11 +263,9 @@ export class OpenAIProvider implements LLMProvider {
 
         // Open the connection
         es.open();
-      } catch (err) {
+      } catch {
         if (!aborted) {
-          callbacks.onError(
-            err instanceof Error ? err : new Error("Unknown error"),
-          );
+          callbacks.onError(new Error(messageForNetworkError()));
         }
       }
     })();

@@ -81,13 +81,13 @@ describe("validateOpenAIKey", () => {
     expect(result.error).toBe("Invalid API key.");
   });
 
-  it("returns valid: false with message for 429", async () => {
+  it("returns valid: false with rate limit message for 429", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 429,
       json: () =>
         Promise.resolve({
-          error: { message: "Rate limit exceeded" },
+          error: { message: "Rate limit exceeded", code: "rate_limit_exceeded" },
         }),
     });
 
@@ -96,15 +96,36 @@ describe("validateOpenAIKey", () => {
     expect(result.error).toContain("Rate limited");
   });
 
+  it("returns valid: false with quota message for 429 insufficient_quota", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: () =>
+        Promise.resolve({
+          error: {
+            message: "You exceeded your current quota",
+            type: "insufficient_quota",
+            code: "insufficient_quota",
+          },
+        }),
+    });
+
+    const result = await validateOpenAIKey("sk-test-key");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Quota exceeded");
+  });
+
   it("returns valid: false on network error", async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error("Network error"));
 
     const result = await validateOpenAIKey("sk-test-key");
     expect(result.valid).toBe(false);
-    expect(result.error).toBe("Network error");
+    expect(result.error).toBe(
+      "Network error. Check your internet connection and try again.",
+    );
   });
 
-  it("returns valid: false with parsed error body for unknown status", async () => {
+  it("returns user-friendly message for unknown status (no raw API text)", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -116,7 +137,9 @@ describe("validateOpenAIKey", () => {
 
     const result = await validateOpenAIKey("sk-test-key");
     expect(result.valid).toBe(false);
-    expect(result.error).toBe("Internal server error");
+    expect(result.error).toBe(
+      "OpenAI is experiencing issues. Please try again later.",
+    );
   });
 
   it("handles non-JSON error responses", async () => {
@@ -128,7 +151,9 @@ describe("validateOpenAIKey", () => {
 
     const result = await validateOpenAIKey("sk-test-key");
     expect(result.valid).toBe(false);
-    expect(result.error).toContain("502");
+    expect(result.error).toBe(
+      "OpenAI is experiencing issues. Please try again later.",
+    );
   });
 });
 
@@ -352,7 +377,7 @@ describe("OpenAIProvider", () => {
 
       await new Promise((r) => setTimeout(r, 10));
 
-      // Simulate a 401 error
+      // Simulate a 401 error (xhrState 4 = DONE)
       mockES._emit("error", {
         type: "error",
         message: "Unauthorized",
@@ -367,7 +392,7 @@ describe("OpenAIProvider", () => {
       );
     });
 
-    it("calls onError on SSE error event (429)", async () => {
+    it("calls onError on SSE error event (429 rate limit)", async () => {
       mockGetItemAsync.mockResolvedValue("sk-test-key");
       const mockES = createMockEventSource();
 
@@ -387,7 +412,9 @@ describe("OpenAIProvider", () => {
 
       mockES._emit("error", {
         type: "error",
-        message: "Too Many Requests",
+        message: JSON.stringify({
+          error: { message: "Rate limit exceeded", type: "rate_limit", code: "rate_limit_exceeded" },
+        }),
         xhrState: 4,
         xhrStatus: 429,
       });
@@ -395,6 +422,44 @@ describe("OpenAIProvider", () => {
       expect(callbacks.onError).toHaveBeenCalledWith(
         expect.objectContaining({
           message: expect.stringContaining("Rate limited"),
+        }),
+      );
+    });
+
+    it("calls onError with quota message on SSE 429 insufficient_quota", async () => {
+      mockGetItemAsync.mockResolvedValue("sk-test-key");
+      const mockES = createMockEventSource();
+
+      const callbacks = {
+        onToken: jest.fn(),
+        onDone: jest.fn(),
+        onError: jest.fn(),
+      };
+
+      provider.sendMessage(
+        [{ role: "user", content: "Hi" }],
+        "gpt-4o",
+        callbacks,
+      );
+
+      await new Promise((r) => setTimeout(r, 10));
+
+      mockES._emit("error", {
+        type: "error",
+        message: JSON.stringify({
+          error: {
+            message: "You exceeded your current quota",
+            type: "insufficient_quota",
+            code: "insufficient_quota",
+          },
+        }),
+        xhrState: 4,
+        xhrStatus: 429,
+      });
+
+      expect(callbacks.onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining("Quota exceeded"),
         }),
       );
     });

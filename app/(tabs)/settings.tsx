@@ -16,7 +16,9 @@ import {
   deleteApiKey,
 } from "@/src/hooks/useSecureStorage";
 import { validateOpenAIKey } from "@/src/providers/openai";
+import { validateAnthropicKey } from "@/src/providers/anthropic";
 import { useProvidersStore } from "@/src/store/providers";
+import { getProvider } from "@/src/providers/registry";
 
 type KeyStatus = "empty" | "saved" | "validating" | "valid" | "invalid";
 
@@ -64,9 +66,16 @@ function ProviderKeyCard({
     setStatus("validating");
     setErrorMessage("");
 
-    // Only validate OpenAI keys for now
+    // Validate API keys for supported providers
     if (providerId === "openai") {
       const result = await validateOpenAIKey(trimmed);
+      if (!result.valid) {
+        setStatus("invalid");
+        setErrorMessage(result.error ?? "Invalid key.");
+        return;
+      }
+    } else if (providerId === "anthropic") {
+      const result = await validateAnthropicKey(trimmed);
       if (!result.valid) {
         setStatus("invalid");
         setErrorMessage(result.error ?? "Invalid key.");
@@ -217,12 +226,39 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const updateProvider = useProvidersStore((s) => s.updateProvider);
+  const setActiveProviderAndModel = useProvidersStore(
+    (s) => s.setActiveProviderAndModel,
+  );
 
   const handleStatusChange = useCallback(
     (providerId: string, isConfigured: boolean) => {
+      // Update Zustand store
       updateProvider(providerId, { isConfigured });
+
+      // Also update the registry instance so sendMessage works
+      const registryProvider = getProvider(providerId);
+      if (registryProvider) {
+        registryProvider.config.isConfigured = isConfigured;
+      }
+
+      // If a provider was just configured and there's no active model,
+      // auto-select the first model from this provider
+      if (isConfigured) {
+        const state = useProvidersStore.getState();
+        if (!state.activeProviderId || !state.activeModelId) {
+          const providerConfig = state.providers.find(
+            (p) => p.id === providerId,
+          );
+          if (providerConfig && providerConfig.models.length > 0) {
+            setActiveProviderAndModel(
+              providerId,
+              providerConfig.models[0].id,
+            );
+          }
+        }
+      }
     },
-    [updateProvider],
+    [updateProvider, setActiveProviderAndModel],
   );
 
   return (
