@@ -3,10 +3,11 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SQLiteProvider } from "expo-sqlite";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useColorScheme } from "react-native";
 
 import { migrateDb } from "@/src/db/schema";
+import { initializeProviders } from "@/src/providers/init";
 
 import "../global.css";
 
@@ -20,6 +21,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const [providersReady, setProvidersReady] = useState(false);
   const [fontsLoaded, fontError] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
@@ -29,12 +31,16 @@ export default function RootLayout() {
   }, [fontError]);
 
   useEffect(() => {
-    if (fontsLoaded) {
+    initializeProviders().then(() => setProvidersReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (fontsLoaded && providersReady) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, providersReady]);
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !providersReady) {
     return null;
   }
 
