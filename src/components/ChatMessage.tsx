@@ -10,7 +10,7 @@
  * Streaming indicator: blinking cursor appended while streaming.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -30,10 +30,18 @@ interface ChatMessageProps {
   isStreaming?: boolean;
 }
 
-export function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
+export const ChatMessage = React.memo(function ChatMessage({
+  role,
+  content,
+  isStreaming,
+}: ChatMessageProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isUser = role === "user";
+
+  // Memoize styles and rules so they only recompute when theme changes
+  const markdownStyles = useMemo(() => getMarkdownStyles(isDark), [isDark]);
+  const rules = useMemo(() => getMarkdownRules(isDark), [isDark]);
 
   if (isUser) {
     return (
@@ -50,9 +58,6 @@ export function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
   // Assistant message — render with Markdown
   const displayContent = isStreaming ? content + " \u2588" : content;
 
-  const markdownStyles = getMarkdownStyles(isDark);
-  const rules = getMarkdownRules(isDark);
-
   return (
     <View className="px-4 py-1.5 items-start">
       <View className="max-w-[95%]">
@@ -62,7 +67,7 @@ export function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
       </View>
     </View>
   );
-}
+});
 
 // ─── Code block copy button ──────────────────────────────────────────────────
 

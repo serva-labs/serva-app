@@ -17,8 +17,8 @@ import {
   Modal,
   FlatList,
   useColorScheme,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useProvidersStore } from "@/src/store/providers";
 import type { ProviderConfig, Model } from "@/src/providers/types";
@@ -80,58 +80,61 @@ export function ModelPicker() {
     return items;
   }, [configuredProviders, activeModelId]);
 
-  const renderItem = ({ item }: { item: ListItem }) => {
-    if (item.type === "header") {
-      return (
-        <View
-          className="px-5 pt-4 pb-2"
-          style={{
-            backgroundColor: isDark ? "#111827" : "#FFFFFF",
-          }}
-        >
-          <Text className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {item.provider.name}
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <Pressable
-        onPress={() => handleSelect(item.providerId, item.model.id)}
-        className="flex-row items-center justify-between px-5 py-3.5"
-        style={({ pressed }) => [
-          {
-            backgroundColor: pressed
-              ? isDark
-                ? "#1F2937"
-                : "#F3F4F6"
-              : isDark
-                ? "#111827"
-                : "#FFFFFF",
-          },
-        ]}
-      >
-        <View className="flex-1">
-          <Text className="text-base font-medium text-gray-900 dark:text-gray-100">
-            {item.model.name}
-          </Text>
-          {item.model.contextWindow && (
-            <Text className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-              {Math.round(item.model.contextWindow / 1000)}k context
+  const renderItem = useCallback(
+    ({ item }: { item: ListItem }) => {
+      if (item.type === "header") {
+        return (
+          <View
+            className="px-5 pt-4 pb-2"
+            style={{
+              backgroundColor: isDark ? "#111827" : "#FFFFFF",
+            }}
+          >
+            <Text className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              {item.provider.name}
             </Text>
+          </View>
+        );
+      }
+
+      return (
+        <Pressable
+          onPress={() => handleSelect(item.providerId, item.model.id)}
+          className="flex-row items-center justify-between px-5 py-3.5"
+          style={({ pressed }) => [
+            {
+              backgroundColor: pressed
+                ? isDark
+                  ? "#1F2937"
+                  : "#F3F4F6"
+                : isDark
+                  ? "#111827"
+                  : "#FFFFFF",
+            },
+          ]}
+        >
+          <View className="flex-1">
+            <Text className="text-base font-medium text-gray-900 dark:text-gray-100">
+              {item.model.name}
+            </Text>
+            {item.model.contextWindow && (
+              <Text className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                {Math.round(item.model.contextWindow / 1000)}k context
+              </Text>
+            )}
+          </View>
+          {item.isActive && (
+            <Ionicons
+              name="checkmark-circle"
+              size={22}
+              color={isDark ? "#818CF8" : "#4F46E5"}
+            />
           )}
-        </View>
-        {item.isActive && (
-          <Ionicons
-            name="checkmark-circle"
-            size={22}
-            color={isDark ? "#818CF8" : "#4F46E5"}
-          />
-        )}
-      </Pressable>
-    );
-  };
+        </Pressable>
+      );
+    },
+    [isDark, handleSelect],
+  );
 
   return (
     <>
@@ -202,7 +205,7 @@ export function ModelPicker() {
               keyExtractor={(item, index) =>
                 item.type === "header"
                   ? `header-${item.provider.id}`
-                  : `model-${item.model.id}`
+                  : `model-${item.providerId}-${item.model.id}`
               }
               contentContainerStyle={{ paddingBottom: 40 }}
             />

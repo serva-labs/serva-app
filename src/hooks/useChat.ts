@@ -36,6 +36,7 @@ function generateId(): string {
 export function useChat() {
   const db = useSQLiteContext();
   const streamControllerRef = useRef<StreamController | null>(null);
+  const abortedRef = useRef(false);
 
   // Zustand selectors (stable references)
   const messages = useChatStore((s) => s.messages);
@@ -54,7 +55,13 @@ export function useChat() {
         return { error: "No model selected. Pick a model first." };
       }
 
-      const provider = getProvider(activeProviderId);
+      // Snapshot provider/model IDs at call time so async callbacks
+      // always reference the values that were active when the request started,
+      // even if the user switches models mid-stream.
+      const snapshotProviderId = activeProviderId;
+      const snapshotModelId = activeModelId;
+
+      const provider = getProvider(snapshotProviderId);
       if (!provider) {
         return {
           error: "Provider not available. Check your API key in Settings.",
@@ -75,8 +82,8 @@ export function useChat() {
         const conversation: Conversation = {
           id: conversationId,
           title,
-          providerId: activeProviderId,
-          modelId: activeModelId,
+          providerId: snapshotProviderId,
+          modelId: snapshotModelId,
           createdAt: now,
           updatedAt: now,
         };
@@ -87,8 +94,8 @@ export function useChat() {
            VALUES (?, ?, ?, ?, ?, ?)`,
           conversationId,
           title,
-          activeProviderId,
-          activeModelId,
+          snapshotProviderId,
+          snapshotModelId,
           now,
           now,
         );
@@ -104,8 +111,8 @@ export function useChat() {
         conversationId,
         role: "user",
         content: text,
-        providerId: activeProviderId,
-        modelId: activeModelId,
+        providerId: snapshotProviderId,
+        modelId: snapshotModelId,
         createdAt: Date.now(),
       };
 
@@ -126,6 +133,7 @@ export function useChat() {
       chatStore.addMessage(userMessage);
       chatStore.setStreaming(true);
       chatStore.clearStreamingContent();
+      abortedRef.current = false;
 
       // Build message history for the API (role + content only)
       const currentMessages = useChatStore.getState().messages;
@@ -138,12 +146,16 @@ export function useChat() {
       const finalConversationId = conversationId;
       const controller = provider.sendMessage(
         apiMessages,
-        activeModelId,
+        snapshotModelId,
         {
           onToken: (token: string) => {
             useChatStore.getState().appendStreamingContent(token);
           },
           onDone: async (fullText: string) => {
+            // Guard: if the stream was aborted, stopStreaming already
+            // saved the partial response — don't double-save.
+            if (abortedRef.current) return;
+
             const store = useChatStore.getState();
 
             // Create assistant message
@@ -152,8 +164,8 @@ export function useChat() {
               conversationId: finalConversationId,
               role: "assistant",
               content: fullText,
-              providerId: activeProviderId,
-              modelId: activeModelId,
+              providerId: snapshotProviderId,
+              modelId: snapshotModelId,
               createdAt: Date.now(),
             };
 
@@ -190,19 +202,23 @@ export function useChat() {
             streamControllerRef.current = null;
           },
           onError: (error: Error) => {
+            // Guard: if the stream was aborted, ignore callback errors.
+            if (abortedRef.current) return;
+
             const store = useChatStore.getState();
             store.setStreaming(false);
             store.clearStreamingContent();
             streamControllerRef.current = null;
 
-            // Add an error message so the user sees what went wrong
+            // Add an ephemeral error message so the user sees what went wrong.
+            // NOT persisted to SQLite — errors are transient.
             store.addMessage({
               id: generateId(),
               conversationId: finalConversationId,
               role: "assistant",
               content: `Error: ${error.message}`,
-              providerId: activeProviderId,
-              modelId: activeModelId,
+              providerId: snapshotProviderId,
+              modelId: snapshotModelId,
               createdAt: Date.now(),
             });
           },
@@ -218,6 +234,7 @@ export function useChat() {
   // ─── Stop streaming ──────────────────────────────────────────────────────
 
   const stopStreaming = useCallback(() => {
+    abortedRef.current = true;
     streamControllerRef.current?.abort();
     streamControllerRef.current = null;
 
@@ -225,16 +242,20 @@ export function useChat() {
     const currentContent = store.streamingContent;
 
     if (currentContent) {
+      // Snapshot provider/model from store (not closure) for consistency
+      const { activeProviderId: pid, activeModelId: mid } =
+        useProvidersStore.getState();
+
       // Save the partial response as a message
       const conversationId = store.activeConversationId;
-      if (conversationId && activeProviderId && activeModelId) {
+      if (conversationId && pid && mid) {
         const partialMessage: Message = {
           id: generateId(),
           conversationId,
           role: "assistant",
           content: currentContent,
-          providerId: activeProviderId,
-          modelId: activeModelId,
+          providerId: pid,
+          modelId: mid,
           createdAt: Date.now(),
         };
 
@@ -259,7 +280,7 @@ export function useChat() {
 
     store.setStreaming(false);
     store.clearStreamingContent();
-  }, [db, activeProviderId, activeModelId]);
+  }, [db]);
 
   // ─── Load a conversation from history ────────────────────────────────────
 
@@ -324,14 +345,15 @@ export function useChat() {
   // ─── Start a new chat ────────────────────────────────────────────────────
 
   const newChat = useCallback(() => {
-    // Abort any active stream
-    if (isStreaming) {
+    // Abort any active stream (read from store, not stale closure)
+    if (useChatStore.getState().isStreaming) {
+      abortedRef.current = true;
       streamControllerRef.current?.abort();
       streamControllerRef.current = null;
     }
 
     useChatStore.getState().reset();
-  }, [isStreaming]);
+  }, []);
 
   // ─── Load all conversations (for history screen) ─────────────────────────
 

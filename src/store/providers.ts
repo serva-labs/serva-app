@@ -48,15 +48,7 @@ export const useProvidersStore = create<ProvidersState>((set) => ({
     set({ activeProviderId: providerId, activeModelId: modelId }),
 }));
 
-// ─── Selectors ───────────────────────────────────────────────────────────────
-
-export const selectActiveProvider = (state: ProvidersState) =>
-  state.providers.find((p) => p.id === state.activeProviderId);
-
-export const selectActiveModel = (state: ProvidersState): Model | undefined => {
-  const provider = selectActiveProvider(state);
-  return provider?.models.find((m) => m.id === state.activeModelId);
-};
-
-export const selectConfiguredProviders = (state: ProvidersState) =>
-  state.providers.filter((p) => p.isConfigured);
+// NOTE: Derived selectors (selectConfiguredProviders, selectActiveModel, etc.)
+// were removed because they return new object/array references on every call,
+// which causes infinite re-render loops when used with Zustand's useStore().
+// Instead, use primitive selectors + useMemo in components.

@@ -214,6 +214,8 @@ function ProviderKeyCard({
 // ─── Settings Screen ─────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
   const updateProvider = useProvidersStore((s) => s.updateProvider);
 
   const handleStatusChange = useCallback(
@@ -261,7 +263,7 @@ export default function SettingsScreen() {
       {/* GitHub Copilot will use OAuth, not key entry — placeholder for now */}
       <View className="mb-4 rounded-2xl bg-gray-50 dark:bg-gray-800 p-4">
         <View className="flex-row items-center gap-2 mb-2">
-          <Ionicons name="ellipse-outline" size={20} color="#6B7280" />
+          <Ionicons name="ellipse-outline" size={20} color={isDark ? "#6B7280" : "#9CA3AF"} />
           <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
             GitHub Copilot
           </Text>

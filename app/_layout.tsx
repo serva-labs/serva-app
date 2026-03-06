@@ -31,7 +31,13 @@ export default function RootLayout() {
   }, [fontError]);
 
   useEffect(() => {
-    initializeProviders().then(() => setProvidersReady(true));
+    initializeProviders()
+      .then(() => setProvidersReady(true))
+      .catch((err) => {
+        // Log and continue in degraded mode — don't freeze on splash forever
+        console.error("Failed to initialize providers:", err);
+        setProvidersReady(true);
+      });
   }, []);
 
   useEffect(() => {

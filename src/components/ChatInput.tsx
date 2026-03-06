@@ -13,7 +13,7 @@ import { useState, useRef, useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
 
 interface ChatInputProps {
-  onSend: (text: string) => void;
+  onSend: (text: string) => void | Promise<void>;
   isStreaming: boolean;
   onStop: () => void;
 }

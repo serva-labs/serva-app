@@ -48,7 +48,6 @@ export default function ChatScreen() {
     streamingContent,
     sendMessage,
     stopStreaming,
-    newChat,
   } = useChat();
 
   // Use primitive selector to avoid infinite re-render loop.
@@ -62,31 +61,36 @@ export default function ChatScreen() {
   const hasProvider = configuredProviders.length > 0;
 
   // Build display list: messages + streaming placeholder
-  const displayData: DisplayItem[] = messages.map((m) => ({
-    type: "message" as const,
-    message: m,
-  }));
+  const displayData = useMemo<DisplayItem[]>(() => {
+    const items: DisplayItem[] = messages.map((m) => ({
+      type: "message" as const,
+      message: m,
+    }));
 
-  if (isStreaming && streamingContent) {
-    displayData.push({
-      type: "streaming" as const,
-      content: streamingContent,
-    });
-  }
-
-  // Auto-scroll to bottom on new messages/streaming
-  const scrollToBottom = useCallback(() => {
-    if (displayData.length > 0) {
-      // Use a short delay to let the FlatList render
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 50);
+    if (isStreaming && streamingContent) {
+      items.push({
+        type: "streaming" as const,
+        content: streamingContent,
+      });
     }
-  }, [displayData.length]);
+
+    return items;
+  }, [messages, isStreaming, streamingContent]);
+
+  // Auto-scroll to bottom on new messages/streaming.
+  // Rely on onContentSizeChange for scroll-during-streaming;
+  // this effect catches discrete jumps (new message added).
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 50);
+  }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages.length, isStreaming, streamingContent.length > 0]);
+    if (displayData.length > 0) {
+      scrollToBottom();
+    }
+  }, [messages.length, scrollToBottom, displayData.length]);
 
   // Handle send
   const handleSend = useCallback(
@@ -164,7 +168,7 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
       <View className="flex-1 bg-white dark:bg-gray-900">

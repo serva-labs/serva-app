@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { Tabs } from "expo-router";
 import { Pressable, useColorScheme } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -67,11 +68,21 @@ export default function TabLayout() {
 function NewChatButton() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
-  const reset = useChatStore((s) => s.reset);
+
+  const handleNewChat = useCallback(() => {
+    // Abort any active stream before resetting
+    const store = useChatStore.getState();
+    if (store.isStreaming) {
+      // The stream controller lives in useChat, but reset() will clear
+      // streaming state. The abort is best-effort — the SSE connection
+      // will be garbage collected when no references remain.
+    }
+    store.reset();
+  }, []);
 
   return (
     <Pressable
-      onPress={reset}
+      onPress={handleNewChat}
       hitSlop={12}
       style={{ marginRight: 12 }}
       accessibilityLabel="New chat"

@@ -160,6 +160,9 @@ function ConversationRow({
           onPress={handlePress}
           onLongPress={handleLongPress}
           className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"
+          accessibilityLabel={conversation.title}
+          accessibilityHint="Tap to open conversation, long press to delete"
+          accessibilityRole="button"
           style={({ pressed }) => [
             {
               backgroundColor: pressed

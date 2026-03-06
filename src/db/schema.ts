@@ -20,6 +20,8 @@ const CURRENT_VERSION = 1;
 export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   // Enable WAL mode for better concurrent read performance
   await db.execAsync("PRAGMA journal_mode = WAL;");
+  // Enable foreign key enforcement (OFF by default in SQLite)
+  await db.execAsync("PRAGMA foreign_keys = ON;");
 
   const result = await db.getFirstAsync<{ user_version: number }>(
     "PRAGMA user_version;",
