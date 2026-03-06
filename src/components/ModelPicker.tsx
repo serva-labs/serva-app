@@ -9,7 +9,7 @@
  * - Tapping a model selects it and closes the modal
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -20,12 +20,7 @@ import {
   SafeAreaView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  useProvidersStore,
-  selectActiveProvider,
-  selectActiveModel,
-  selectConfiguredProviders,
-} from "@/src/store/providers";
+import { useProvidersStore } from "@/src/store/providers";
 import type { ProviderConfig, Model } from "@/src/providers/types";
 
 // ─── Section data type for grouped list ──────────────────────────────────────
@@ -39,17 +34,26 @@ export function ModelPicker() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
-  const activeProvider = useProvidersStore(selectActiveProvider);
-  const activeModel = useProvidersStore(selectActiveModel);
-  const configuredProviders = useProvidersStore(selectConfiguredProviders);
+  // Use primitive selectors to avoid re-render loops from derived arrays/objects
+  const providers = useProvidersStore((s) => s.providers);
+  const activeProviderId = useProvidersStore((s) => s.activeProviderId);
+  const activeModelId = useProvidersStore((s) => s.activeModelId);
   const setActiveProviderAndModel = useProvidersStore(
     (s) => s.setActiveProviderAndModel,
   );
-  const activeModelId = useProvidersStore((s) => s.activeModelId);
 
-  const displayText = activeModel
-    ? activeModel.name
-    : "Select model";
+  // Derive values with useMemo to keep stable references
+  const configuredProviders = useMemo(
+    () => providers.filter((p) => p.isConfigured),
+    [providers],
+  );
+
+  const activeModel = useMemo(() => {
+    const provider = providers.find((p) => p.id === activeProviderId);
+    return provider?.models.find((m) => m.id === activeModelId);
+  }, [providers, activeProviderId, activeModelId]);
+
+  const displayText = activeModel ? activeModel.name : "Select model";
 
   const handleSelect = useCallback(
     (providerId: string, modelId: string) => {
@@ -60,18 +64,21 @@ export function ModelPicker() {
   );
 
   // Build flat list data with section headers
-  const listData: ListItem[] = [];
-  for (const provider of configuredProviders) {
-    listData.push({ type: "header", provider });
-    for (const model of provider.models) {
-      listData.push({
-        type: "model",
-        model,
-        providerId: provider.id,
-        isActive: model.id === activeModelId,
-      });
+  const listData = useMemo(() => {
+    const items: ListItem[] = [];
+    for (const provider of configuredProviders) {
+      items.push({ type: "header", provider });
+      for (const model of provider.models) {
+        items.push({
+          type: "model",
+          model,
+          providerId: provider.id,
+          isActive: model.id === activeModelId,
+        });
+      }
     }
-  }
+    return items;
+  }, [configuredProviders, activeModelId]);
 
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === "header") {

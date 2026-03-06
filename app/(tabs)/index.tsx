@@ -12,7 +12,7 @@
  * - Active chat: message list + streaming indicator
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -26,12 +26,8 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ChatMessage } from "@/src/components/ChatMessage";
 import { ChatInput } from "@/src/components/ChatInput";
-import { ModelPicker } from "@/src/components/ModelPicker";
 import { useChat } from "@/src/hooks/useChat";
-import {
-  useProvidersStore,
-  selectConfiguredProviders,
-} from "@/src/store/providers";
+import { useProvidersStore } from "@/src/store/providers";
 import type { Message } from "@/src/providers/types";
 
 // ─── Message list item type (includes streaming placeholder) ─────────────────
@@ -55,7 +51,14 @@ export default function ChatScreen() {
     newChat,
   } = useChat();
 
-  const configuredProviders = useProvidersStore(selectConfiguredProviders);
+  // Use primitive selector to avoid infinite re-render loop.
+  // .filter() returns a new array ref each call which tricks Zustand into
+  // thinking state changed. Derive with useMemo instead.
+  const providers = useProvidersStore((s) => s.providers);
+  const configuredProviders = useMemo(
+    () => providers.filter((p) => p.isConfigured),
+    [providers],
+  );
   const hasProvider = configuredProviders.length > 0;
 
   // Build display list: messages + streaming placeholder
