@@ -11,3 +11,10 @@ jest.mock("expo-secure-store", () => ({
 jest.mock("react-native-sse", () => {
   return jest.fn();
 });
+
+// Mock expo-clipboard
+jest.mock("expo-clipboard", () => ({
+  setStringAsync: jest.fn().mockResolvedValue(true),
+  getStringAsync: jest.fn().mockResolvedValue(""),
+  hasStringAsync: jest.fn().mockResolvedValue(false),
+}));
