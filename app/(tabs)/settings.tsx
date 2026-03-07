@@ -508,8 +508,6 @@ function GitHubCopilotCard({ onStatusChange }: GitHubCopilotCardProps) {
 // ─── Settings Screen ─────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
   const updateProvider = useProvidersStore((s) => s.updateProvider);
   const setActiveProviderAndModel = useProvidersStore(
     (s) => s.setActiveProviderAndModel,

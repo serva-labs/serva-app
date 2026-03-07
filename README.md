@@ -52,7 +52,8 @@ For running on a simulator/emulator, you need **one** of the following:
 |---|---|
 | iOS Simulator (macOS only) | Xcode + iOS Simulator runtime |
 | Android Emulator | Android Studio + Android SDK + AVD |
-| Physical device | [Expo Go](https://expo.dev/go) app installed on your phone |
+
+> **Note**: Expo Go (the store app) only supports SDK 54. This project uses SDK 55, so Expo Go will not work. Use one of the simulators/emulators above or build a [development build](https://docs.expo.dev/develop/development-builds/introduction/) for your physical device.
 
 ## Getting started
 
@@ -76,6 +77,7 @@ Edit `.env` and add your API keys:
 OPENAI_API_KEY=sk-your-key-here
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 GOOGLE_API_KEY=AIza-your-key-here
+GITHUB_COPILOT_TOKEN=
 ```
 
 This is only needed for integration tests. The app itself stores API keys through its Settings screen using encrypted device storage.
@@ -147,30 +149,6 @@ npx expo start --android
 
 ---
 
-#### Option C: Physical device with Expo Go (any OS, quickest setup)
-
-This requires no simulator or emulator at all. Your phone and laptop must be on the same Wi-Fi network.
-
-1. Install **Expo Go** on your phone:
-   - [iOS App Store](https://apps.apple.com/app/expo-go/id982107779)
-   - [Google Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent)
-
-2. Start the dev server:
-
-```bash
-npx expo start
-```
-
-3. Scan the QR code shown in the terminal:
-   - **iOS**: Scan with the Camera app — it will open Expo Go
-   - **Android**: Scan from inside the Expo Go app
-
-The app will load on your phone with hot reload. Code changes appear in ~1-2 seconds.
-
-> **Note**: Some native modules (like expo-secure-store) work in Expo Go but with limitations. For full native functionality, use a simulator or a [development build](https://docs.expo.dev/develop/development-builds/introduction/).
-
----
-
 ### 4. First launch walkthrough
 
 1. The app opens to the **Chat** tab showing "No provider configured"
@@ -181,9 +159,9 @@ The app will load on your phone with hot reload. Code changes appear in ~1-2 sec
 6. Type a message and tap send
 7. The assistant's response streams in token-by-token with markdown rendering
 
-## Building for Android (APK)
+## Building a development APK
 
-You can build a standalone APK and install it directly on your Android phone without going through the Play Store.
+You can build a standalone APK for testing on a physical Android device or emulator. This is for local development and testing — not for Play Store distribution.
 
 ### Prerequisites
 
@@ -212,15 +190,11 @@ When the build completes, EAS gives you a download URL for the APK.
 
 ### Install on an emulator
 
-If you have Android Studio and an emulator set up, EAS can install the APK directly:
+If you have Android Studio and an emulator set up:
 
 ```bash
-# Build and install on a running emulator
-eas build --platform android --profile preview --local
 adb install path/to/build.apk
 ```
-
-Or let EAS handle it during the build flow — it will offer to install on a detected emulator automatically.
 
 ## Project structure
 
@@ -346,10 +320,6 @@ If you see stale code or weird errors after pulling changes:
 ```bash
 npx expo start --clear
 ```
-
-### "Cannot connect to Metro" on physical device
-
-Make sure your phone and laptop are on the same Wi-Fi network. Corporate/guest networks sometimes block local traffic. Try using a personal hotspot as a fallback.
 
 ## Architecture
 

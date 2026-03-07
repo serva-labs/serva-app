@@ -6,7 +6,7 @@
  */
 
 import { create } from "zustand";
-import type { ProviderConfig, Model } from "@/src/providers/types";
+import type { ProviderConfig } from "@/src/providers/types";
 
 interface ProvidersState {
   /** All known provider configurations */

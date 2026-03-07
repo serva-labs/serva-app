@@ -24,7 +24,6 @@ import {
   refreshCopilotToken,
 } from "./auth";
 import {
-  messageForCopilotError,
   messageFromResponseBody,
   messageForNetworkError,
 } from "../errors";
